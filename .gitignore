@@ -1,0 +1,60 @@
+# ===========================
+# Node.js / npm
+# ===========================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm
+.yarn-integrity
+
+# ===========================
+# Build outputs
+# ===========================
+dist/
+build/
+.vite/
+
+# ===========================
+# Environment files
+# NEVER commit secrets!
+# ===========================
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+backend/backend/.env
+frontend/frontend/.env
+
+# ===========================
+# OS / Editor files
+# ===========================
+.DS_Store
+Thumbs.db
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# ===========================
+# Logs
+# ===========================
+logs/
+*.log
+
+# ===========================
+# Uploads (user-generated content)
+# ===========================
+backend/backend/uploads/*
+!backend/backend/uploads/.gitkeep
+
+# ===========================
+# Zip archives
+# ===========================
+*.zip
