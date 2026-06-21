@@ -1,9 +1,11 @@
 const mongoose = require("mongoose");
 
 async function connectDB() {
-  const mongoUri =
-    process.env.MONGO_URI ||
-    "mongodb+srv://swetha:swetha123@cluster0.8cyerw3.mongodb.net/studentmentalhealth?retryWrites=true&w=majority&appName=Cluster0";
+  const mongoUri = process.env.MONGO_URI;
+
+  if (!mongoUri) {
+    throw new Error("MONGO_URI is not defined in environment variables");
+  }
 
   await mongoose.connect(mongoUri);
 
