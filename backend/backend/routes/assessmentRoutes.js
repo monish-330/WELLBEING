@@ -6,6 +6,7 @@ const StudentAssessment = require("../models/StudentAssessment");
 const DailyRisk = require("../models/DailyRisk");
 const MotivationQuote = require("../models/MotivationQuote");
 const { requireAuth } = require("../middleware/auth");
+const memoryCache = require("../utils/cache");
 
 function getTodayString() {
   return new Intl.DateTimeFormat("en-CA", {
@@ -17,12 +18,35 @@ function getTodayString() {
 }
 
 async function getQuoteForRisk(riskLevel) {
-  const quote = await MotivationQuote.findOne({
-    riskLevel: String(riskLevel || "").trim().toUpperCase(),
-    isActive: true
-  }).sort({ createdAt: -1 });
+  const normRisk = String(riskLevel || "").trim().toUpperCase();
+  const cacheKey = `quote_${normRisk}`;
+  const cached = memoryCache.get(cacheKey);
+  if (cached) return cached;
 
-  return quote?.message || `Your risk level is ${riskLevel}`;
+  const quote = await MotivationQuote.findOne({
+    riskLevel: normRisk,
+    isActive: true
+  })
+    .sort({ createdAt: -1 })
+    .lean();
+
+  const msg = quote?.message || `Your risk level is ${riskLevel}`;
+  memoryCache.set(cacheKey, msg, 10 * 60 * 1000); // 10 min cache
+  return msg;
+}
+
+async function getActiveQuestions(categories) {
+  const sortedKey = `questions_${[...categories].sort().join("_")}`;
+  const cached = memoryCache.get(sortedKey);
+  if (cached) return cached;
+
+  const questions = await EMAQuestion.find({
+    category: { $in: categories },
+    isActive: true
+  }).lean();
+
+  memoryCache.set(sortedKey, questions, 10 * 60 * 1000);
+  return questions;
 }
 
 function getEffectiveStudentId(userLike) {
@@ -49,22 +73,18 @@ router.get("/next-assessment/:studentId", requireAuth, async (req, res) => {
     }
     const today = getTodayString();
 
-    const last = await StudentAssessment.findOne({ studentId }).sort({ createdAt: -1 });
-
-    const todayRisk = await DailyRisk.findOne({
-      studentId,
-      assessmentDate: today
-    });
+    // Parallel fetch for last assessment and today's risk record with .lean()
+    const [last, todayRisk] = await Promise.all([
+      StudentAssessment.findOne({ studentId }).sort({ createdAt: -1 }).lean(),
+      DailyRisk.findOne({ studentId, assessmentDate: today }).lean()
+    ]);
 
     if (
       todayRisk &&
       todayRisk.dailyRiskLevel === "HIGH" &&
       !todayRisk.assessment2Complete
     ) {
-      const questions = await EMAQuestion.find({
-        category: { $in: ["phq9", "gad7", "mbi"] },
-        isActive: true
-      });
+      const questions = await getActiveQuestions(["phq9", "gad7", "mbi"]);
 
       return res.json({
         dayNumber: todayRisk.dayNumber,
@@ -95,10 +115,7 @@ router.get("/next-assessment/:studentId", requireAuth, async (req, res) => {
       }
     }
 
-    const questions = await EMAQuestion.find({
-      category: { $in: ["who5", "ghq12"] },
-      isActive: true
-    });
+    const questions = await getActiveQuestions(["who5", "ghq12"]);
 
     res.json({
       dayNumber: day,
@@ -119,8 +136,6 @@ router.post("/submit-assessment", requireAuth, async (req, res) => {
       return res.status(400).json({ message: "Student ID is required" });
     }
     const today = getTodayString();
-
-    console.log("SUBMIT:", studentId, dayNumber, assessmentNumber);
 
     await StudentAssessment.create({
       studentId,

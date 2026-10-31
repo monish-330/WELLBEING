@@ -17,15 +17,21 @@ function getStudentLookupKeys(student) {
 }
 
 router.get("/", async (req, res) => {
-  const counselors = await User.find({ role: "counselor" }).select("-password");
+  const counselors = await User.find({ role: "counselor" })
+    .select("-password")
+    .lean();
   res.json(counselors);
 });
 
 router.get("/dashboard", requireRole("counselor", "admin"), async (req, res) => {
   try {
-    const risks = await DailyRisk.find().sort({ createdAt: -1 });
-    const assessments = await StudentAssessment.find();
-    const students = await User.find({ role: "student" }).select("studentId username name");
+    // Parallel lean queries across collections
+    const [risks, assessments, students] = await Promise.all([
+      DailyRisk.find().sort({ createdAt: -1 }).lean(),
+      StudentAssessment.find().lean(),
+      User.find({ role: "student" }).select("studentId username name").lean()
+    ]);
+
     const studentMap = new Map();
 
     students.forEach((student) => {

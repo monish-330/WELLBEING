@@ -26,7 +26,10 @@ router.get("/booked-slots", async (req, res) => {
     counselorId: req.query.counselorId,
     date: req.query.date,
     status: "Confirmed"
-  });
+  })
+    .select("slot")
+    .lean();
+
   res.json(confirmed.map((appointment) => appointment.slot));
 });
 
@@ -38,25 +41,26 @@ router.get("/mine", requireAuth, async (req, res) => {
 
   const appointments = await Appointment.find({ studentId })
     .sort({ createdAt: -1 })
-    .populate("counselorId", "name email specialization");
+    .populate("counselorId", "name email specialization")
+    .lean();
 
   res.json(appointments);
 });
 
 router.get("/counselor/:id", requireRole("counselor", "admin"), async (req, res) => {
   const counselorId = req.user?.role === "counselor" ? req.user.id : req.params.id;
-  const appointments = await Appointment.find({ counselorId }).populate(
-    "counselorId",
-    "name email specialization"
-  );
+  const appointments = await Appointment.find({ counselorId })
+    .populate("counselorId", "name email specialization")
+    .lean();
+
   res.json(appointments);
 });
 
 router.get("/:id", requireAuth, async (req, res) => {
-  const appointment = await Appointment.findById(req.params.id).populate(
-    "counselorId",
-    "name email specialization"
-  );
+  const appointment = await Appointment.findById(req.params.id)
+    .populate("counselorId", "name email specialization")
+    .lean();
+
   if (!appointment) {
     return res.status(404).json({ message: "Appointment not found" });
   }
@@ -95,7 +99,7 @@ router.put("/request-reschedule/:id", requireRole("counselor", "admin"), async (
 });
 
 router.put("/reschedule/:id", requireAuth, async (req, res) => {
-  const appointment = await Appointment.findById(req.params.id);
+  const appointment = await Appointment.findById(req.params.id).lean();
   if (!appointment) {
     return res.status(404).json({ message: "Appointment not found" });
   }
@@ -124,7 +128,7 @@ router.put("/complete/:id", requireRole("counselor", "admin"), async (req, res) 
 });
 
 router.delete("/:id", requireAuth, async (req, res) => {
-  const appointment = await Appointment.findById(req.params.id);
+  const appointment = await Appointment.findById(req.params.id).lean();
   if (!appointment) {
     return res.status(404).json({ message: "Appointment not found" });
   }
@@ -146,9 +150,9 @@ router.delete("/:id", requireAuth, async (req, res) => {
   res.json({ success: true });
 });
 
-// POST - Send message on appointment
+// POST - Send message on appointment (atomic $push)
 router.post("/:id/message", requireAuth, async (req, res) => {
-  const appointment = await Appointment.findById(req.params.id);
+  const appointment = await Appointment.findById(req.params.id).lean();
   if (!appointment) {
     return res.status(404).json({ message: "Appointment not found" });
   }
@@ -169,19 +173,25 @@ router.post("/:id/message", requireAuth, async (req, res) => {
     timestamp: new Date()
   };
 
-  appointment.messages.push(message);
-  await appointment.save();
-  res.status(201).json(appointment);
+  const updated = await Appointment.findByIdAndUpdate(
+    req.params.id,
+    { $push: { messages: message } },
+    { new: true }
+  );
+
+  res.status(201).json(updated);
 });
 
 // GET - Retrieve messages for appointment
 router.get("/:id/messages", requireAuth, async (req, res) => {
-  const appointment = await Appointment.findById(req.params.id);
+  const appointment = await Appointment.findById(req.params.id)
+    .select("studentId counselorId messages")
+    .lean();
+
   if (!appointment) {
     return res.status(404).json({ message: "Appointment not found" });
   }
 
-  // Verify user has access
   const studentId = getEffectiveStudentId(req.user);
   const isStudent = String(appointment.studentId) === studentId && req.user?.role === "student";
   const isCounselor = String(appointment.counselorId) === String(req.user.id) && req.user?.role === "counselor";
@@ -195,12 +205,11 @@ router.get("/:id/messages", requireAuth, async (req, res) => {
 
 // PUT - Counselor accepts the rescheduled appointment
 router.put("/accept-reschedule/:id", requireRole("counselor", "admin"), async (req, res) => {
-  const appointment = await Appointment.findById(req.params.id);
+  const appointment = await Appointment.findById(req.params.id).lean();
   if (!appointment) {
     return res.status(404).json({ message: "Appointment not found" });
   }
 
-  // Update appointment with counselor's suggested date and slot, status to Pending (waiting for student to accept)
   await Appointment.findByIdAndUpdate(req.params.id, {
     counselorSuggestedDate: req.body.date,
     counselorSuggestedSlot: req.body.slot,

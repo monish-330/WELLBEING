@@ -6,11 +6,14 @@ const motivationQuoteSchema = new mongoose.Schema(
     riskLevel: {
       type: String,
       enum: ["LOW", "MODERATE", "HIGH"],
-      required: true
+      required: true,
+      index: true
     },
-    isActive: { type: Boolean, default: true }
+    isActive: { type: Boolean, default: true, index: true }
   },
   { timestamps: true }
 );
+
+motivationQuoteSchema.index({ riskLevel: 1, isActive: 1 });
 
 module.exports = mongoose.model("MotivationQuote", motivationQuoteSchema);

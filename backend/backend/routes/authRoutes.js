@@ -37,17 +37,18 @@ router.post("/register", requireAuth, async (req, res) => {
 
     const exists = await User.findOne({
       $or: [{ username }, { email }]
-    });
+    }).lean();
 
     if (exists) {
       return res.status(400).json({ message: "User already exists" });
     }
 
+    const hashedPassword = await bcrypt.hash(password, 10);
     const user = await User.create({
       name,
       username,
       email,
-      password: await bcrypt.hash(password, 10),
+      password: hashedPassword,
       role,
       studentId: role === "student" ? (studentId || username) : (studentId || null),
       specialization: specialization || ""
@@ -72,7 +73,11 @@ router.post("/register", requireAuth, async (req, res) => {
 router.post("/login", async (req, res) => {
   try {
     const { username, password } = req.body;
-    const user = await User.findOne({ username });
+    if (!username || !password) {
+      return res.status(400).json({ message: "Username and password required" });
+    }
+
+    const user = await User.findOne({ username }).lean();
 
     if (!user) {
       return res.status(400).json({ message: "Invalid credentials" });
@@ -100,7 +105,7 @@ router.post("/login", async (req, res) => {
 });
 
 router.get("/me", requireAuth, async (req, res) => {
-  const user = await User.findById(req.user.id).select("-password");
+  const user = await User.findById(req.user.id).select("-password").lean();
   res.json(user);
 });
 

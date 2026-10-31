@@ -25,7 +25,7 @@ function containsBadWord(text) {
 }
 
 router.get("/", async (_req, res) => {
-  const posts = await Post.find().sort({ createdAt: -1 });
+  const posts = await Post.find().sort({ createdAt: -1 }).lean();
   res.json(posts);
 });
 
@@ -42,35 +42,54 @@ router.post("/", async (req, res) => {
   res.status(201).json(post);
 });
 
+// Atomic concurrency-safe like
 router.put("/like/:id", async (req, res) => {
-  const post = await Post.findById(req.params.id);
-  if (!post) {
-    return res.status(404).json({ message: "Post not found" });
+  const profileId = req.body.profileId;
+  if (!profileId) {
+    return res.status(400).json({ message: "profileId is required" });
   }
 
-  if (post.likedBy.includes(req.body.profileId)) {
+  const updatedPost = await Post.findOneAndUpdate(
+    { _id: req.params.id, likedBy: { $ne: profileId } },
+    { $inc: { likes: 1 }, $push: { likedBy: profileId } },
+    { new: true }
+  );
+
+  if (!updatedPost) {
+    const post = await Post.findById(req.params.id).select("likedBy").lean();
+    if (!post) {
+      return res.status(404).json({ message: "Post not found" });
+    }
     return res.status(400).json({ message: "Already liked" });
   }
 
-  post.likes += 1;
-  post.likedBy.push(req.body.profileId);
-  await post.save();
-  res.json(post);
+  res.json(updatedPost);
 });
 
+// Atomic concurrency-safe comment
 router.post("/comment/:id", async (req, res) => {
   if (containsBadWord(req.body.text)) {
     return res.status(400).json({ message: "Inappropriate language is not allowed." });
   }
 
-  const post = await Post.findById(req.params.id);
-  post.comments.push({
+  const newComment = {
     text: req.body.text,
     anonymousId: req.body.anonymousId,
-    realUserName: req.body.realUserName || req.body.anonymousId || "Anonymous"
-  });
-  await post.save();
-  res.json(post);
+    realUserName: req.body.realUserName || req.body.anonymousId || "Anonymous",
+    createdAt: new Date()
+  };
+
+  const updatedPost = await Post.findByIdAndUpdate(
+    req.params.id,
+    { $push: { comments: newComment } },
+    { new: true }
+  );
+
+  if (!updatedPost) {
+    return res.status(404).json({ message: "Post not found" });
+  }
+
+  res.json(updatedPost);
 });
 
 router.delete("/comment/:postId/:index", requireRole("admin"), async (req, res) => {

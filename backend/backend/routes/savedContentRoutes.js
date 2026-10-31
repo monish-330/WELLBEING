@@ -11,7 +11,7 @@ function getEffectiveStudentId(userLike) {
 
 router.get("/", requireAuth, async (req, res) => {
   const userId = getEffectiveStudentId(req.user);
-  const items = await SavedContent.find({ userId }).sort({ createdAt: -1 });
+  const items = await SavedContent.find({ userId }).sort({ createdAt: -1 }).lean();
   res.json(items);
 });
 

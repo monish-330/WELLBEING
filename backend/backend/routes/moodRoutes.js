@@ -6,7 +6,9 @@ const router = express.Router();
 
 // GET moods for logged-in user
 router.get("/", requireAuth, async (req, res) => {
-  const moods = await Mood.find({ userId: req.user.id }).sort({ mood_date: -1 });
+  const moods = await Mood.find({ userId: req.user.id })
+    .sort({ mood_date: -1 })
+    .lean();
   res.json(moods);
 });
 

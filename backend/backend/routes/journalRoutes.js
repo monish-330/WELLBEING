@@ -7,9 +7,9 @@ const router = express.Router();
 
 // GET journals for logged-in user
 router.get("/", requireAuth, async (req, res) => {
-  const journals = await Journal.find({ user_id: req.user.id }).sort({
-    journal_date: -1
-  });
+  const journals = await Journal.find({ user_id: req.user.id })
+    .sort({ journal_date: -1 })
+    .lean();
 
   res.json(
     journals.map((journal) => ({

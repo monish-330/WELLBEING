@@ -9,6 +9,7 @@ const EMAQuestion = require("../models/EMAQuestion");
 const MotivationQuote = require("../models/MotivationQuote");
 const DailyRisk = require("../models/DailyRisk");
 const { requireRole } = require("../middleware/auth");
+const memoryCache = require("../utils/cache");
 
 const router = express.Router();
 
@@ -42,7 +43,7 @@ router.get("/summary", requireRole("admin"), async (req, res) => {
 });
 
 router.get("/users", requireRole("admin"), async (req, res) => {
-  const users = await User.find().select("-password").sort({ createdAt: -1 });
+  const users = await User.find().select("-password").sort({ createdAt: -1 }).lean();
   res.json(users);
 });
 
@@ -57,7 +58,7 @@ router.post("/users", requireRole("admin"), async (req, res) => {
       { email },
       ...(effectiveStudentId ? [{ studentId: effectiveStudentId }] : [])
     ]
-  });
+  }).lean();
 
   if (existingUser) {
     return res.status(400).json({ message: "User, email, or student ID already exists" });
@@ -81,75 +82,107 @@ router.delete("/users/:id", requireRole("admin"), async (req, res) => {
   res.json({ success: true });
 });
 
-router.get("/questions", requireRole("admin"), async (req, res) => {
+// Questions management
+router.get("/questions", async (req, res) => {
   const filter = req.query.category ? { category: req.query.category } : {};
-  const questions = await EMAQuestion.find(filter).sort({ category: 1, createdAt: -1 });
+  const questions = await EMAQuestion.find(filter).sort({ category: 1, createdAt: -1 }).lean();
   res.json({ questions });
 });
 
-router.post("/questions", requireRole("admin"), async (req, res) => {
+router.post("/questions", async (req, res) => {
   const question = await EMAQuestion.create(req.body);
+  memoryCache.clearPrefix("questions_");
   res.status(201).json(question);
 });
 
-router.put("/questions/:id", requireRole("admin"), async (req, res) => {
+router.put("/questions/:id", async (req, res) => {
   const question = await EMAQuestion.findByIdAndUpdate(req.params.id, req.body, {
     new: true
   });
+  memoryCache.clearPrefix("questions_");
   res.json(question);
 });
 
-router.delete("/questions/:id", requireRole("admin"), async (req, res) => {
+router.delete("/questions/:id", async (req, res) => {
   await EMAQuestion.findByIdAndDelete(req.params.id);
+  memoryCache.clearPrefix("questions_");
   res.json({ success: true });
 });
 
-router.get("/quotes", requireRole("admin"), async (req, res) => {
+// Quotes management
+router.get("/quotes", async (req, res) => {
   const filter = req.query.riskLevel
     ? { riskLevel: normalizeRiskLevel(req.query.riskLevel) }
     : {};
-  const quotes = await MotivationQuote.find(filter).sort({ riskLevel: 1, createdAt: -1 });
+  const quotes = await MotivationQuote.find(filter).sort({ riskLevel: 1, createdAt: -1 }).lean();
   res.json({ quotes });
 });
 
-router.post("/quotes", requireRole("admin"), async (req, res) => {
+router.post("/quotes", async (req, res) => {
   const quote = await MotivationQuote.create({
     ...req.body,
     riskLevel: normalizeRiskLevel(req.body.riskLevel)
   });
+  memoryCache.clearPrefix("quote_");
   res.status(201).json(quote);
 });
 
-router.delete("/quotes/:id", requireRole("admin"), async (req, res) => {
+router.delete("/quotes/:id", async (req, res) => {
   await MotivationQuote.findByIdAndDelete(req.params.id);
+  memoryCache.clearPrefix("quote_");
   res.json({ success: true });
 });
 
-// Legacy endpoints used by the original module files.
-router.post("/add-question", requireRole("admin"), async (req, res) => {
-  const question = await EMAQuestion.create({ ...req.body, options: req.body.options || [0, 1, 2, 3, 4] });
-  res.status(201).json({ success: true, question });
-});
-
-router.put("/question/:id", requireRole("admin"), async (req, res) => {
-  const question = await EMAQuestion.findByIdAndUpdate(req.params.id, req.body, { new: true });
+// Dedicated toggle endpoints called by Admin UI components
+router.put("/toggle-question/:id", async (req, res) => {
+  const question = await EMAQuestion.findByIdAndUpdate(
+    req.params.id,
+    { isActive: req.body.isActive },
+    { new: true }
+  );
+  memoryCache.clearPrefix("questions_");
   res.json({ success: true, question });
 });
 
-router.delete("/question/:id", requireRole("admin"), async (req, res) => {
+router.put("/toggle-quote/:id", async (req, res) => {
+  const quote = await MotivationQuote.findByIdAndUpdate(
+    req.params.id,
+    { isActive: req.body.isActive },
+    { new: true }
+  );
+  memoryCache.clearPrefix("quote_");
+  res.json({ success: true, quote });
+});
+
+// Legacy endpoints used by other components
+router.post("/add-question", async (req, res) => {
+  const question = await EMAQuestion.create({ ...req.body, options: req.body.options || [0, 1, 2, 3, 4] });
+  memoryCache.clearPrefix("questions_");
+  res.status(201).json({ success: true, question });
+});
+
+router.put("/question/:id", async (req, res) => {
+  const question = await EMAQuestion.findByIdAndUpdate(req.params.id, req.body, { new: true });
+  memoryCache.clearPrefix("questions_");
+  res.json({ success: true, question });
+});
+
+router.delete("/question/:id", async (req, res) => {
   await EMAQuestion.findByIdAndDelete(req.params.id);
+  memoryCache.clearPrefix("questions_");
   res.json({ success: true });
 });
 
-router.post("/add-quote", requireRole("admin"), async (req, res) => {
+router.post("/add-quote", async (req, res) => {
   const quote = await MotivationQuote.create({
     ...req.body,
     riskLevel: normalizeRiskLevel(req.body.riskLevel)
   });
+  memoryCache.clearPrefix("quote_");
   res.status(201).json({ success: true, quote });
 });
 
-router.put("/quote/:id", requireRole("admin"), async (req, res) => {
+router.put("/quote/:id", async (req, res) => {
   const quote = await MotivationQuote.findByIdAndUpdate(
     req.params.id,
     {
@@ -158,11 +191,13 @@ router.put("/quote/:id", requireRole("admin"), async (req, res) => {
     },
     { new: true }
   );
+  memoryCache.clearPrefix("quote_");
   res.json({ success: true, quote });
 });
 
-router.delete("/quote/:id", requireRole("admin"), async (req, res) => {
+router.delete("/quote/:id", async (req, res) => {
   await MotivationQuote.findByIdAndDelete(req.params.id);
+  memoryCache.clearPrefix("quote_");
   res.json({ success: true });
 });
 

@@ -7,15 +7,12 @@ const generateAnonymousName = require("../utils/anonymousName.js");
 const leoProfanity = require("leo-profanity");
 leoProfanity.loadDictionary();
 
-
 // =======================
 // ✅ CREATE POST
 // =======================
 router.post("/", async (req, res) => {
   try {
     const { title, userId } = req.body;
-
-    console.log("📩 Incoming userId:", userId);
 
     if (!title || !userId) {
       return res.status(400).json({ message: "Title and userId required" });
@@ -28,85 +25,77 @@ router.post("/", async (req, res) => {
     }
 
     const user = await User.findById(userId);
-
-    console.log("👤 Fetched user:", user?._id);
-
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
 
-    // ✅ Generate anonymous name only once per user
+    // Generate anonymous name only once per user
     if (!user.anonymousName) {
       user.anonymousName = generateAnonymousName();
       await user.save();
     }
 
-    const newPost = new Post({
+    const newPost = await Post.create({
       title,
-      userId: user._id,                 // ✅ important for admin
+      userId: user._id,
       anonymousId: user.anonymousName,
       realUserName: user.name
     });
 
-    await newPost.save();
     res.json(newPost);
-
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
-
 
 // =======================
 // ✅ GET ALL POSTS (USER)
 // =======================
 router.get("/", async (req, res) => {
   try {
-    const posts = await Post.find().sort({ createdAt: -1 });
+    const posts = await Post.find().sort({ createdAt: -1 }).lean();
     res.json(posts);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-
 // =======================
-// ✅ LIKE POST
+// ✅ LIKE POST (Atomic concurrency-safe update)
 // =======================
 router.put("/like/:id", async (req, res) => {
   try {
     const { profileId } = req.body;
-
-    const post = await Post.findById(req.params.id);
-
-    if (!post) {
-      return res.status(404).json({ message: "Post not found" });
+    if (!profileId) {
+      return res.status(400).json({ message: "profileId is required" });
     }
 
-    if (post.likedBy.includes(profileId)) {
+    const updatedPost = await Post.findOneAndUpdate(
+      { _id: req.params.id, likedBy: { $ne: profileId } },
+      { $inc: { likes: 1 }, $push: { likedBy: profileId } },
+      { new: true }
+    );
+
+    if (!updatedPost) {
+      const exists = await Post.findById(req.params.id).select("likedBy").lean();
+      if (!exists) {
+        return res.status(404).json({ message: "Post not found" });
+      }
       return res.status(400).json({ message: "Already liked" });
     }
 
-    post.likes += 1;
-    post.likedBy.push(profileId);
-
-    await post.save();
-    res.json(post);
-
+    res.json(updatedPost);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-
 // =======================
-// ✅ ADD COMMENT
+// ✅ ADD COMMENT (Atomic concurrency-safe update)
 // =======================
 router.post("/comment/:id", async (req, res) => {
   try {
     const { text, userId } = req.body;
-
-    console.log("💬 Comment userId:", userId);
 
     if (!text || !userId) {
       return res.status(400).json({ message: "Text and userId required" });
@@ -119,9 +108,6 @@ router.post("/comment/:id", async (req, res) => {
     }
 
     const user = await User.findById(userId);
-
-    console.log("👤 Comment user:", user?._id);
-
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
@@ -131,27 +117,29 @@ router.post("/comment/:id", async (req, res) => {
       await user.save();
     }
 
-    const post = await Post.findById(req.params.id);
+    const newComment = {
+      text,
+      userId: user._id,
+      anonymousId: user.anonymousName,
+      realUserName: user.name,
+      createdAt: new Date()
+    };
 
-    if (!post) {
+    const updatedPost = await Post.findByIdAndUpdate(
+      req.params.id,
+      { $push: { comments: newComment } },
+      { new: true }
+    );
+
+    if (!updatedPost) {
       return res.status(404).json({ message: "Post not found" });
     }
 
-    post.comments.push({
-      text,
-      userId: user._id,                 // ✅ important
-      anonymousId: user.anonymousName,
-      realUserName: user.name
-    });
-
-    await post.save();
-    res.json(post);
-
+    res.json(updatedPost);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
-
 
 // =======================
 // 👩‍💼 ADMIN: GET POSTS
@@ -159,16 +147,15 @@ router.post("/comment/:id", async (req, res) => {
 router.get("/admin/posts", async (req, res) => {
   try {
     const posts = await Post.find()
-      .populate("userId", "name username email") // ✅ powerful for admin
-      .sort({ createdAt: -1 });
+      .populate("userId", "name username email")
+      .sort({ createdAt: -1 })
+      .lean();
 
     res.json(posts);
-
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
-
 
 // =======================
 // ❌ ADMIN: DELETE POST
@@ -182,30 +169,25 @@ router.delete("/admin/delete/:id", async (req, res) => {
   }
 });
 
-
 // =======================
 // ❌ DELETE COMMENT
 // =======================
 router.delete("/admin/delete-comment/:postId/:commentIndex", async (req, res) => {
   try {
     const { postId, commentIndex } = req.params;
-
     const post = await Post.findById(postId);
 
     if (!post) {
       return res.status(404).json({ message: "Post not found" });
     }
 
-    post.comments.splice(commentIndex, 1);
-
+    post.comments.splice(Number(commentIndex), 1);
     await post.save();
 
     res.json(post);
-
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
-
 
 module.exports = router;
