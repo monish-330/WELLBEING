@@ -1,21 +1,49 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "services": {
+    "backend": {
+      "root": "backend/backend",
+      "framework": "express",
+      "entrypoint": "server.js"
+    },
+    "frontend": {
+      "root": "frontend/frontend",
+      "framework": "vite",
+      "outputDirectory": "dist"
+    }
+  },
   "rewrites": [
     {
-      "source": "/api/:match*",
-      "destination": "https://wellbeing-backend-764z.onrender.com/api/:match*"
+      "source": "/api/(.*)",
+      "destination": "https://wellbeing-backend-764z.onrender.com/api/$1"
     },
     {
-      "source": "/uploads/:match*",
-      "destination": "https://wellbeing-backend-764z.onrender.com/uploads/:match*"
+      "source": "/uploads/(.*)",
+      "destination": "https://wellbeing-backend-764z.onrender.com/uploads/$1"
     },
     {
-      "source": "/images/:match*",
-      "destination": "https://wellbeing-backend-764z.onrender.com/images/:match*"
+      "source": "/images/(.*)",
+      "destination": "https://wellbeing-backend-764z.onrender.com/images/$1"
+    },
+    {
+      "source": "/assets/(.*)",
+      "destination": {
+        "service": "frontend",
+        "path": "/assets/$1"
+      }
+    },
+    {
+      "source": "/(.*\\.(?:ico|png|jpg|jpeg|svg|css|js|json|webmanifest|woff|woff2|ttf|eot))",
+      "destination": {
+        "service": "frontend"
+      }
     },
     {
       "source": "/(.*)",
-      "destination": "/index.html"
+      "destination": {
+        "service": "frontend",
+        "path": "/index.html"
+      }
     }
   ]
 }
