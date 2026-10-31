@@ -3,7 +3,7 @@ import axios from "axios";
 import { useNavigate, useParams } from "react-router-dom";
 import "./BookingStatus.css";
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "";
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || (typeof window !== "undefined" && window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1" ? "https://wellbeing-backend-764z.onrender.com" : "");
 
 const getAuthConfig = () => {
   const token = localStorage.getItem("authToken");
@@ -24,14 +24,34 @@ const getStoredUser = () => {
   }
 };
 
-const TIME_SLOTS = [
-  "08:00 - 08:50 AM",
-  "09:00 - 09:50 AM",
-  "10:00 - 10:50 AM",
-  "11:00 - 11:50 AM",
-  "12:00 - 12:50 PM",
-  "14:00 - 14:50 PM",
-];
+const SESSIONS = {
+  morning: {
+    name: "Morning Session",
+    label: "Morning Session (8:00 AM – 12:00 PM)",
+    slots: [
+      "08:00 AM – 08:50 AM",
+      "09:00 AM – 09:50 AM",
+      "10:00 AM – 10:50 AM",
+      "11:00 AM – 11:50 AM"
+    ]
+  },
+  afternoon: {
+    name: "Afternoon Session",
+    label: "Afternoon Session (12:00 PM – 3:00 PM)",
+    slots: [
+      "12:00 PM – 12:50 PM",
+      "02:00 PM – 02:50 PM"
+    ]
+  }
+};
+
+function getTodayString() {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, "0");
+  const day = String(today.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
 
 function BookingStatus() {
   const { id } = useParams();
@@ -40,6 +60,7 @@ function BookingStatus() {
 
   const [appointment, setAppointment] = useState(null);
   const [newDate, setNewDate] = useState("");
+  const [newSession, setNewSession] = useState("");
   const [newSlot, setNewSlot] = useState("");
   const [bookedSlots, setBookedSlots] = useState([]);
   const [messages, setMessages] = useState([]);
@@ -72,36 +93,22 @@ function BookingStatus() {
   }, [id]);
 
   useEffect(() => {
-    const loadAppointment = async () => {
-      await fetchAppointment();
-    };
-
-    loadAppointment();
-
-    const interval = setInterval(() => {
-      fetchAppointment();
-    }, 5000);
-
+    fetchAppointment();
+    const interval = setInterval(fetchAppointment, 5000);
     return () => clearInterval(interval);
   }, [fetchAppointment]);
 
   useEffect(() => {
-    const loadMessages = async () => {
-      await fetchMessages();
-    };
-
-    loadMessages();
-
-    const messageInterval = setInterval(() => {
-      fetchMessages();
-    }, 3000);
-
+    fetchMessages();
+    const messageInterval = setInterval(fetchMessages, 3000);
     return () => clearInterval(messageInterval);
   }, [fetchMessages]);
 
   useEffect(() => {
     const fetchBookedSlots = async () => {
-      if (!appointment?.counselorId?._id || !newDate) {
+      const counselorObjId = appointment?.counselorId?._id || appointment?.counselorId;
+      if (!counselorObjId || !newDate) {
+        setBookedSlots([]);
         return;
       }
 
@@ -111,7 +118,7 @@ function BookingStatus() {
           {
             ...getAuthConfig(),
             params: {
-              counselorId: appointment.counselorId._id,
+              counselorId: counselorObjId,
               date: newDate
             }
           }
@@ -127,17 +134,20 @@ function BookingStatus() {
   }, [appointment, newDate]);
 
   const cancelBooking = async () => {
+    if (!window.confirm("Are you sure you want to cancel this appointment?")) return;
     try {
       await axios.delete(`${API_BASE_URL}/api/appointments/${id}`, getAuthConfig());
-      fetchAppointment();
+      alert("Appointment cancelled successfully.");
+      await fetchAppointment();
     } catch (err) {
       console.error("Error cancelling booking:", err);
+      alert(err.response?.data?.message || "Failed to cancel booking.");
     }
   };
 
   const submitReschedule = async () => {
     if (!newDate || !newSlot) {
-      alert("Please select date and time");
+      alert("Please select both date and time slot.");
       return;
     }
 
@@ -151,19 +161,21 @@ function BookingStatus() {
         `${API_BASE_URL}/api/appointments/reschedule/${id}`,
         {
           date: newDate,
+          session: newSession ? SESSIONS[newSession].name : undefined,
           slot: newSlot
         },
         getAuthConfig()
       );
 
-      alert("Appointment rescheduled successfully");
+      alert("Appointment rescheduled successfully!");
       setNewDate("");
+      setNewSession("");
       setNewSlot("");
       setBookedSlots([]);
       fetchAppointment();
     } catch (err) {
       console.error("Error rescheduling appointment:", err);
-      alert("Reschedule failed");
+      alert(err.response?.data?.message || "Reschedule failed.");
     }
   };
 
@@ -191,8 +203,15 @@ function BookingStatus() {
   };
 
   if (!appointment) {
-    return <p>Loading booking details...</p>;
+    return (
+      <div className="status-card">
+        <p>Loading booking details...</p>
+      </div>
+    );
   }
+
+  const isRescheduled = appointment.status === "Rescheduled" || appointment.status === "Reschedule Requested";
+  const isAccepted = appointment.status === "Confirmed" || appointment.status === "Accepted";
 
   return (
     <div className="status-card">
@@ -202,21 +221,23 @@ function BookingStatus() {
         style={{ marginBottom: "16px" }}
         onClick={() => navigate(-1)}
       >
-        Back
+        ← Back
       </button>
 
       <h2>Booking Status</h2>
 
       <p>
         <b>Status:</b>{" "}
-        {appointment.status === "Pending" &&
-          "⏳ Pending (Waiting for counselor response)"}
-        {appointment.status === "Confirmed" && "✅ Accepted"}
+        {appointment.status === "Pending" && "⏳ Pending (Waiting for counselor response)"}
+        {isAccepted && "✅ Accepted by Counselor"}
         {appointment.status === "Rejected" && "❌ Rejected"}
-        {appointment.status === "Reschedule Requested" &&
-          "🔄 Counselor asked you to reschedule"}
+        {isRescheduled && "🔄 Counselor requested a reschedule"}
         {appointment.status === "Completed" && "🎉 Session Completed"}
-        {appointment.status === "Cancelled" && "🚫 Booking Cancelled"}
+        {appointment.status === "Cancelled" && (
+          <span style={{ color: "#dc2626", fontWeight: "bold" }}>
+            🚫 Cancelled {appointment.cancelledBy ? `(by ${appointment.cancelledBy})` : ""}
+          </span>
+        )}
       </p>
 
       <p>
@@ -226,7 +247,10 @@ function BookingStatus() {
         <b>Date:</b> {appointment.date}
       </p>
       <p>
-        <b>Time:</b> {appointment.slot}
+        <b>Session:</b> {appointment.session || "Scheduled Session"}
+      </p>
+      <p>
+        <b>Time Slot:</b> {appointment.slot}
       </p>
 
       <div className="important-notice-card">
@@ -242,14 +266,13 @@ function BookingStatus() {
         </p>
       </div>
 
-      {appointment.status !== "Cancelled" &&
-        appointment.status !== "Completed" && (
-          <div className="btn-group">
-            <button onClick={cancelBooking} className="danger">
-              Cancel Booking
-            </button>
-          </div>
-        )}
+      {appointment.status !== "Cancelled" && appointment.status !== "Completed" && (
+        <div className="btn-group">
+          <button onClick={cancelBooking} className="danger">
+            Cancel Booking
+          </button>
+        </div>
+      )}
 
       {!["Rejected", "Cancelled", "Completed"].includes(appointment.status) && (
         <p className="booking-lock-message">
@@ -257,13 +280,14 @@ function BookingStatus() {
         </p>
       )}
 
-      {appointment.status === "Reschedule Requested" && (
+      {isRescheduled && (
         <div className="reschedule-box">
-          <h4>Choose New Date and Time</h4>
+          <h4>Choose New Date and Time Slot</h4>
 
           <label>New Date</label>
           <input
             type="date"
+            min={getTodayString()}
             value={newDate}
             onChange={(e) => {
               setNewDate(e.target.value);
@@ -271,39 +295,58 @@ function BookingStatus() {
             }}
           />
 
-          <label>New Time</label>
-          <select value={newSlot} onChange={(e) => setNewSlot(e.target.value)}>
-            <option value="">-- Select Time Slot --</option>
-            {TIME_SLOTS.map((slot, index) => (
-              <option
-                key={index}
-                value={slot}
-                disabled={bookedSlots.includes(slot)}
-              >
-                {slot} {bookedSlots.includes(slot) ? "(Booked)" : ""}
-              </option>
-            ))}
+          <label>Select Session</label>
+          <select
+            value={newSession}
+            onChange={(e) => {
+              setNewSession(e.target.value);
+              setNewSlot("");
+            }}
+          >
+            <option value="">-- Select Session --</option>
+            <option value="morning">{SESSIONS.morning.label}</option>
+            <option value="afternoon">{SESSIONS.afternoon.label}</option>
           </select>
 
-          <button onClick={submitReschedule}>Submit Reschedule</button>
+          {newSession && (
+            <>
+              <label>Select Time Slot</label>
+              <select value={newSlot} onChange={(e) => setNewSlot(e.target.value)}>
+                <option value="">-- Select Time Slot --</option>
+                {SESSIONS[newSession].slots.map((slot, index) => (
+                  <option
+                    key={index}
+                    value={slot}
+                    disabled={bookedSlots.includes(slot)}
+                  >
+                    {slot} {bookedSlots.includes(slot) ? "(Booked)" : "— Available"}
+                  </option>
+                ))}
+              </select>
+            </>
+          )}
+
+          <button onClick={submitReschedule} style={{ marginTop: "12px" }}>
+            Submit Reschedule
+          </button>
         </div>
       )}
 
-      {appointment.status === "Confirmed" && (
+      {isAccepted && (
         <p style={{ color: "green", fontWeight: "bold" }}>
-          ✅ Booking Confirmed
+          ✅ Booking Confirmed — Counselor will meet with you at the scheduled time.
         </p>
       )}
 
       {appointment.status === "Rejected" && (
         <p style={{ color: "red", fontWeight: "bold" }}>
-          ❌ Booking Rejected
+          ❌ Booking Rejected by Counselor
         </p>
       )}
 
       {appointment.status === "Cancelled" && (
         <p style={{ color: "gray", fontWeight: "bold" }}>
-          🚫 Booking Cancelled
+          🚫 Booking Cancelled {appointment.cancelledBy === "student" ? "by you" : "by counselor"}
         </p>
       )}
 

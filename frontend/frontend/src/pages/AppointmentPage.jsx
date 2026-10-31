@@ -129,9 +129,11 @@ function AppointmentCard({ appt }) {
         </div>
         <div>
           <span style={{ color: "#9ca3af", fontWeight: 600, fontSize: "12px", display: "block", marginBottom: "2px" }}>
-            DATE
+            DATE & SESSION
           </span>
-          <span style={{ fontWeight: 700, color: "#1f2937" }}>{appt.date}</span>
+          <span style={{ fontWeight: 700, color: "#1f2937" }}>
+            {appt.date} {appt.session ? `(${appt.session})` : ""}
+          </span>
         </div>
         <div>
           <span style={{ color: "#9ca3af", fontWeight: 600, fontSize: "12px", display: "block", marginBottom: "2px" }}>
@@ -141,10 +143,12 @@ function AppointmentCard({ appt }) {
         </div>
         <div>
           <span style={{ color: "#9ca3af", fontWeight: 600, fontSize: "12px", display: "block", marginBottom: "2px" }}>
-            REASON
+            STATUS DETAIL
           </span>
           <span style={{ fontWeight: 700, color: "#1f2937" }}>
-            {appt.reason || "—"}
+            {appt.status === "Cancelled" && appt.cancelledBy
+              ? `Cancelled by ${appt.cancelledBy}`
+              : appt.status}
           </span>
         </div>
       </div>

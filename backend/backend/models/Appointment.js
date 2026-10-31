@@ -12,13 +12,16 @@ const appointmentSchema = new mongoose.Schema(
       index: true
     },
     studentId: { type: String, default: null, index: true },
+    studentUsername: { type: String, default: "" },
     date: { type: String, required: true, index: true },
     slot: { type: String, required: true },
+    session: { type: String, default: "" },
     status: { type: String, default: "Pending", index: true },
     counselorNotified: { type: Boolean, default: false },
     remarks: { type: String, default: "" },
     counselorSuggestedDate: { type: String, default: null },
     counselorSuggestedSlot: { type: String, default: null },
+    cancelledBy: { type: String, default: null },
     messages: [
       {
         sender: { type: String, enum: ["student", "counselor"], required: true },

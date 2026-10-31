@@ -42,7 +42,7 @@ export default function CounselorPage() {
       {tab === "high-risk" ? (
         <Counselor />
       ) : (
-        <AppointmentCounselorDashboard forcedCounselorId={user?.id} />
+        <AppointmentCounselorDashboard forcedCounselorId={user?.id || user?._id || ""} />
       )}
     </div>
   );

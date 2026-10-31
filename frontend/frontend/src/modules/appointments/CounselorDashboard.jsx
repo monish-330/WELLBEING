@@ -1,9 +1,30 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import axios from "axios";
 import { useParams } from "react-router-dom";
 import "./CounselorDashboard.css";
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "";
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || (typeof window !== "undefined" && window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1" ? "https://wellbeing-backend-764z.onrender.com" : "");
+
+const SESSIONS = {
+  morning: {
+    name: "Morning Session",
+    label: "Morning Session (8:00 AM – 12:00 PM)",
+    slots: [
+      "08:00 AM – 08:50 AM",
+      "09:00 AM – 09:50 AM",
+      "10:00 AM – 10:50 AM",
+      "11:00 AM – 11:50 AM"
+    ]
+  },
+  afternoon: {
+    name: "Afternoon Session",
+    label: "Afternoon Session (12:00 PM – 3:00 PM)",
+    slots: [
+      "12:00 PM – 12:50 PM",
+      "02:00 PM – 02:50 PM"
+    ]
+  }
+};
 
 function getAuthConfig() {
   const token = localStorage.getItem("authToken");
@@ -20,20 +41,38 @@ function getStoredUser() {
   }
 }
 
+function getTodayString() {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, "0");
+  const day = String(today.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 function CounselorDashboard({ forcedCounselorId = "" }) {
   const params = useParams();
-  const counselorId = forcedCounselorId || params.id;
   const authUser = getStoredUser();
+  const counselorId = forcedCounselorId || authUser?.id || authUser?._id || params.id;
+
   const [appointments, setAppointments] = useState([]);
   const [remarks, setRemarks] = useState({});
-  const [selectedTab, setSelectedTab] = useState("Bookings");
+  const [selectedTab, setSelectedTab] = useState("Bookings"); // "Bookings", "Accepted", "Completed", "Cancelled", "All"
   const [selectedDate, setSelectedDate] = useState(null);
   const [currentMonth, setCurrentMonth] = useState(new Date());
+
+  // Reschedule state
+  const [reschedulingId, setReschedulingId] = useState(null);
+  const [rescheduleDate, setRescheduleDate] = useState("");
+  const [rescheduleSession, setRescheduleSession] = useState("morning");
+  const [rescheduleSlot, setRescheduleSlot] = useState("");
+  const [rescheduleBookedSlots, setRescheduleBookedSlots] = useState([]);
+
+  // Chat state
   const [chatAppointmentId, setChatAppointmentId] = useState(null);
   const [messages, setMessages] = useState({});
   const [newMessage, setNewMessage] = useState({});
 
-  const fetchAppointments = async () => {
+  const fetchAppointments = useCallback(async () => {
     if (!counselorId) return;
     try {
       const res = await axios.get(
@@ -42,14 +81,17 @@ function CounselorDashboard({ forcedCounselorId = "" }) {
       );
       setAppointments(res.data || []);
     } catch (err) {
-      console.error(err);
+      console.error("Error fetching counselor appointments:", err);
       setAppointments([]);
     }
-  };
+  }, [counselorId]);
 
+  // Initial fetch and 5-second polling for real-time synchronization
   useEffect(() => {
     fetchAppointments();
-  }, [counselorId]);
+    const interval = setInterval(fetchAppointments, 5000);
+    return () => clearInterval(interval);
+  }, [fetchAppointments]);
 
   const fetchMessages = async (appointmentId) => {
     if (!appointmentId) return;
@@ -58,7 +100,7 @@ function CounselorDashboard({ forcedCounselorId = "" }) {
         `${API_BASE_URL}/api/appointments/${appointmentId}/messages`,
         getAuthConfig()
       );
-      setMessages(prev => ({ ...prev, [appointmentId]: res.data || [] }));
+      setMessages((prev) => ({ ...prev, [appointmentId]: res.data || [] }));
     } catch (err) {
       console.error("Error fetching messages:", err);
     }
@@ -74,18 +116,81 @@ function CounselorDashboard({ forcedCounselorId = "" }) {
     }
   }, [chatAppointmentId]);
 
-  const updateStatus = async (appointmentId, action, message) => {
+  // Fetch booked slots when counselor selects reschedule date
+  useEffect(() => {
+    if (!counselorId || !rescheduleDate) {
+      setRescheduleBookedSlots([]);
+      return;
+    }
+    axios
+      .get(`${API_BASE_URL}/api/appointments/booked-slots`, {
+        ...getAuthConfig(),
+        params: { counselorId, date: rescheduleDate }
+      })
+      .then((res) => setRescheduleBookedSlots(res.data || []))
+      .catch(() => setRescheduleBookedSlots([]));
+  }, [counselorId, rescheduleDate]);
+
+  const handleAccept = async (appointmentId) => {
     try {
       await axios.put(
-        `${API_BASE_URL}/api/appointments/${action}/${appointmentId}`,
+        `${API_BASE_URL}/api/appointments/accept/${appointmentId}`,
         {},
         getAuthConfig()
       );
-      alert(message);
-      fetchAppointments();
+      alert("Appointment accepted successfully.");
+      await fetchAppointments();
     } catch (err) {
       console.error(err);
-      alert("Failed to update status");
+      alert(err.response?.data?.message || "Failed to accept appointment");
+    }
+  };
+
+  const handleReject = async (appointmentId) => {
+    if (!window.confirm("Are you sure you want to reject this appointment request?")) return;
+    try {
+      await axios.put(
+        `${API_BASE_URL}/api/appointments/reject/${appointmentId}`,
+        {},
+        getAuthConfig()
+      );
+      alert("Appointment rejected.");
+      await fetchAppointments();
+    } catch (err) {
+      console.error(err);
+      alert(err.response?.data?.message || "Failed to reject appointment");
+    }
+  };
+
+  const openRescheduleModal = (appt) => {
+    setReschedulingId(appt._id);
+    setRescheduleDate(appt.date || getTodayString());
+    setRescheduleSession("morning");
+    setRescheduleSlot("");
+  };
+
+  const handleSaveReschedule = async (appointmentId) => {
+    if (!rescheduleDate || !rescheduleSlot) {
+      alert("Please select both a new date and a time slot.");
+      return;
+    }
+
+    try {
+      await axios.put(
+        `${API_BASE_URL}/api/appointments/reschedule/${appointmentId}`,
+        {
+          date: rescheduleDate,
+          session: SESSIONS[rescheduleSession].name,
+          slot: rescheduleSlot
+        },
+        getAuthConfig()
+      );
+      alert("Appointment rescheduled successfully!");
+      setReschedulingId(null);
+      await fetchAppointments();
+    } catch (err) {
+      console.error("Reschedule failed:", err);
+      alert(err.response?.data?.message || "Failed to reschedule appointment.");
     }
   };
 
@@ -101,24 +206,25 @@ function CounselorDashboard({ forcedCounselorId = "" }) {
         getAuthConfig()
       );
       alert("Session completed successfully");
-      fetchAppointments();
+      await fetchAppointments();
     } catch (err) {
       console.error(err);
-      alert("Failed to complete session");
+      alert(err.response?.data?.message || "Failed to complete session");
     }
   };
 
   const cancelBooking = async (appointmentId) => {
+    if (!window.confirm("Are you sure you want to cancel this booking?")) return;
     try {
       await axios.delete(
         `${API_BASE_URL}/api/appointments/${appointmentId}`,
         getAuthConfig()
       );
       alert("Booking cancelled successfully");
-      fetchAppointments();
+      await fetchAppointments();
     } catch (err) {
       console.error(err);
-      alert("Failed to cancel booking");
+      alert(err.response?.data?.message || "Failed to cancel booking");
     }
   };
 
@@ -137,7 +243,7 @@ function CounselorDashboard({ forcedCounselorId = "" }) {
         },
         getAuthConfig()
       );
-      setNewMessage(prev => ({ ...prev, [appointmentId]: "" }));
+      setNewMessage((prev) => ({ ...prev, [appointmentId]: "" }));
       fetchMessages(appointmentId);
     } catch (err) {
       console.error("Error sending message:", err);
@@ -145,26 +251,11 @@ function CounselorDashboard({ forcedCounselorId = "" }) {
     }
   };
 
-  const parseLocalDate = (dateString) => {
-    if (!dateString) return null;
-    const parts = dateString.split("-");
-    if (parts.length !== 3) return null;
-    return new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
-  };
-
   const formatDateString = (date) => {
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, "0");
     const day = String(date.getDate()).padStart(2, "0");
     return `${year}-${month}-${day}`;
-  };
-
-  const getAppointmentsForDate = (dateString) => {
-    return filteredAppointments.filter((a) => a.date === dateString);
-  };
-
-  const getAppointmentCountForDate = (dateString) => {
-    return getAppointmentsForDate(dateString).length;
   };
 
   const getMonthDays = (date) => {
@@ -188,39 +279,49 @@ function CounselorDashboard({ forcedCounselorId = "" }) {
   const firstDay = getFirstDayOfMonth(currentMonth);
   const calendarDays = [];
 
-  // Add empty cells for days before month starts
   for (let i = 0; i < firstDay; i++) {
     calendarDays.push(null);
   }
 
-  // Add days of the month
   for (let i = 1; i <= monthDays; i++) {
     calendarDays.push(i);
   }
 
-  const getFilteredAppointments = () => {
+  // Filter appointments according to active tab
+  const getTabFilteredAppointments = () => {
     return appointments.filter((appointment) => {
+      const status = appointment.status;
       if (selectedTab === "Bookings") {
-        return (
-          appointment.status === "Pending" ||
-          appointment.status === "Reschedule Requested"
-        );
+        return status === "Pending" || status === "Rescheduled" || status === "Reschedule Requested";
       }
       if (selectedTab === "Accepted") {
-        return appointment.status === "Confirmed";
+        return status === "Confirmed" || status === "Accepted";
       }
       if (selectedTab === "Completed") {
-        return appointment.status === "Completed";
+        return status === "Completed";
       }
-      return false;
+      if (selectedTab === "Cancelled") {
+        return status === "Cancelled" || status === "Rejected";
+      }
+      return true; // "All"
     });
   };
 
-  const filteredAppointments = getFilteredAppointments();
+  const tabAppointments = getTabFilteredAppointments();
+
+  // If a specific date is selected on the calendar, filter by date; otherwise show all tab appointments
   const selectedDateString = selectedDate ? formatDateString(selectedDate) : null;
-  const selectedAppointments = selectedDateString
-    ? getAppointmentsForDate(selectedDateString)
-    : [];
+  const displayedAppointments = selectedDateString
+    ? tabAppointments.filter((a) => a.date === selectedDateString)
+    : tabAppointments;
+
+  // Counts for tabs
+  const countBookings = appointments.filter(
+    (a) => a.status === "Pending" || a.status === "Rescheduled" || a.status === "Reschedule Requested"
+  ).length;
+  const countAccepted = appointments.filter((a) => a.status === "Confirmed" || a.status === "Accepted").length;
+  const countCompleted = appointments.filter((a) => a.status === "Completed").length;
+  const countCancelled = appointments.filter((a) => a.status === "Cancelled" || a.status === "Rejected").length;
 
   return (
     <div className="counselor-dashboard">
@@ -231,22 +332,35 @@ function CounselorDashboard({ forcedCounselorId = "" }) {
           className={selectedTab === "Bookings" ? "active-tab" : ""}
           onClick={() => setSelectedTab("Bookings")}
         >
-          Bookings
+          Pending ({countBookings})
         </button>
         <button
           className={selectedTab === "Accepted" ? "active-tab" : ""}
           onClick={() => setSelectedTab("Accepted")}
         >
-          Accepted
+          Accepted ({countAccepted})
         </button>
         <button
           className={selectedTab === "Completed" ? "active-tab" : ""}
           onClick={() => setSelectedTab("Completed")}
         >
-          Completed
+          Completed ({countCompleted})
+        </button>
+        <button
+          className={selectedTab === "Cancelled" ? "active-tab" : ""}
+          onClick={() => setSelectedTab("Cancelled")}
+        >
+          Cancelled / Rejected ({countCancelled})
+        </button>
+        <button
+          className={selectedTab === "All" ? "active-tab" : ""}
+          onClick={() => setSelectedTab("All")}
+        >
+          All ({appointments.length})
         </button>
       </div>
 
+      {/* Calendar Section */}
       <div className="calendar-section">
         <div className="calendar-header">
           <button onClick={getPreviousMonth} className="nav-btn">
@@ -274,18 +388,11 @@ function CounselorDashboard({ forcedCounselorId = "" }) {
               return <div key={`empty-${index}`} className="calendar-cell empty"></div>;
             }
 
-            const cellDate = new Date(
-              currentMonth.getFullYear(),
-              currentMonth.getMonth(),
-              day
-            );
+            const cellDate = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day);
             const cellDateString = formatDateString(cellDate);
-            const appointmentCount = getAppointmentCountForDate(cellDateString);
-            const isSelected =
-              selectedDate &&
-              selectedDate.getDate() === day &&
-              selectedDate.getMonth() === currentMonth.getMonth() &&
-              selectedDate.getFullYear() === currentMonth.getFullYear();
+            const dateAppts = tabAppointments.filter((a) => a.date === cellDateString);
+            const appointmentCount = dateAppts.length;
+            const isSelected = selectedDateString === cellDateString;
 
             return (
               <div
@@ -294,13 +401,13 @@ function CounselorDashboard({ forcedCounselorId = "" }) {
                   appointmentCount > 0 ? "has-appointments" : ""
                 }`}
                 onClick={() => {
-                  setSelectedDate(cellDate);
+                  setSelectedDate(isSelected ? null : cellDate);
                 }}
               >
                 <div className="day-number">{day}</div>
                 {appointmentCount > 0 && (
                   <div className="appointment-count">
-                    {appointmentCount} {appointmentCount === 1 ? "Appointment" : "Appointments"}
+                    {appointmentCount} {appointmentCount === 1 ? "Appt" : "Appts"}
                   </div>
                 )}
               </div>
@@ -309,98 +416,244 @@ function CounselorDashboard({ forcedCounselorId = "" }) {
         </div>
       </div>
 
-      {selectedDate && (
-        <div className="details-panel">
-          <h3>
-            Appointments for {selectedDate.toLocaleDateString("default", {
-              weekday: "long",
-              year: "numeric",
-              month: "long",
-              day: "numeric"
-            })}
+      {/* Details & Appointment List Section */}
+      <div className="details-panel">
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", flexWrap: "wrap", gap: "10px" }}>
+          <h3 style={{ margin: 0 }}>
+            {selectedDateString
+              ? `Appointments on ${selectedDate.toLocaleDateString("default", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}`
+              : `${selectedTab} Appointments (${displayedAppointments.length})`}
           </h3>
 
-          {selectedAppointments.length === 0 ? (
-            <p>No appointments scheduled for this date.</p>
-          ) : (
-            <div className="appointments-list">
-              {selectedAppointments.map((appointment) => (
+          {selectedDate && (
+            <button
+              onClick={() => setSelectedDate(null)}
+              style={{
+                background: "#f3f4f6",
+                color: "#4b5563",
+                border: "1px solid #d1d5db",
+                borderRadius: "10px",
+                padding: "6px 14px",
+                fontSize: "13px",
+                fontWeight: 600,
+                cursor: "pointer"
+              }}
+            >
+              ✖ Clear Date Filter (View All)
+            </button>
+          )}
+        </div>
+
+        {displayedAppointments.length === 0 ? (
+          <div style={{ textAlign: "center", padding: "30px", color: "#888" }}>
+            <p style={{ fontSize: "36px", marginBottom: "8px" }}>📭</p>
+            <p>No appointments found {selectedDateString ? "for this selected date" : `under "${selectedTab}"`}.</p>
+          </div>
+        ) : (
+          <div className="appointments-list">
+            {displayedAppointments.map((appointment) => {
+              const isAccepted = appointment.status === "Confirmed" || appointment.status === "Accepted";
+              const isPending = appointment.status === "Pending" || appointment.status === "Rescheduled";
+              const isCancelled = appointment.status === "Cancelled";
+              const isRejected = appointment.status === "Rejected";
+
+              return (
                 <div key={appointment._id} className="appointment-detail-card">
                   <div className="appointment-info">
                     <p>
-                      <b>Student:</b> {appointment.studentName}
+                      <b>Student Name:</b>{" "}
+                      <span style={{ fontSize: "16px", fontWeight: 700, color: "#1f2937" }}>
+                        {appointment.studentName}
+                      </span>
                     </p>
                     <p>
                       <b>Email:</b> {appointment.email}
                     </p>
                     <p>
-                      <b>Phone:</b> {appointment.phone}
+                      <b>Phone:</b> {appointment.phone || "—"}
                     </p>
                     <p>
                       <b>Date:</b> {appointment.date}
                     </p>
                     <p>
-                      <b>Time:</b> {appointment.slot}
+                      <b>Session:</b> {appointment.session || "Scheduled Session"}
+                    </p>
+                    <p>
+                      <b>Time Slot:</b>{" "}
+                      <span style={{ fontWeight: 700, color: "#9a3f63" }}>
+                        {appointment.slot}
+                      </span>
                     </p>
                     <p>
                       <b>Status:</b>{" "}
-                      <span className={`status-badge status-${appointment.status.toLowerCase().replace(" ", "-")}`}>
-                        {appointment.status}
+                      <span
+                        className={`status-badge status-${appointment.status.toLowerCase().replace(" ", "-")}`}
+                        style={{
+                          background: isCancelled ? "#fef2f2" : isAccepted ? "#f0fdf4" : isPending ? "#fffbeb" : "#f3f4f6",
+                          color: isCancelled ? "#dc2626" : isAccepted ? "#16a34a" : isPending ? "#d97706" : "#4b5563",
+                          border: `1px solid ${isCancelled ? "#fecaca" : isAccepted ? "#bbf7d0" : isPending ? "#fde68a" : "#e5e7eb"}`
+                        }}
+                      >
+                        {isAccepted ? "Accepted" : appointment.status}
+                        {isCancelled && appointment.cancelledBy && ` (by ${appointment.cancelledBy})`}
                       </span>
                     </p>
                   </div>
 
-                  {appointment.status === "Pending" && (
-                    <div className="action-buttons">
+                  {/* Pending Actions: Accept, Reject, Reschedule */}
+                  {isPending && (
+                    <div className="action-buttons" style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
                       <button
-                        onClick={() => updateStatus(appointment._id, "accept", "Appointment confirmed")}
+                        onClick={() => handleAccept(appointment._id)}
                         className="btn-accept"
                       >
-                        Accept
+                        ✔ Accept Appointment
                       </button>
                       <button
-                        onClick={() => updateStatus(appointment._id, "request-reschedule", "Reschedule request sent")}
+                        onClick={() => handleReject(appointment._id)}
+                        className="btn-cancel"
+                        style={{ background: "#dc2626" }}
+                      >
+                        ✖ Reject
+                      </button>
+                      <button
+                        onClick={() => openRescheduleModal(appointment)}
                         className="btn-reschedule"
                       >
-                        Request Reschedule
+                        🔄 Reschedule Appointment
                       </button>
                     </div>
                   )}
 
-                  {appointment.status === "Reschedule Requested" && (
-                    <div className="reschedule-info">
-                      <p>
-                        <b>Suggested Date:</b>{" "}
-                        {appointment.counselorSuggestedDate || "Waiting for student to suggest"}
-                      </p>
-                      <p>
-                        <b>Suggested Time:</b>{" "}
-                        {appointment.counselorSuggestedSlot || "Waiting for student to suggest"}
-                      </p>
+                  {/* Reschedule Selector Form */}
+                  {reschedulingId === appointment._id && (
+                    <div
+                      style={{
+                        background: "#fff7fa",
+                        border: "1.5px solid #ffd0df",
+                        borderRadius: "14px",
+                        padding: "18px",
+                        marginTop: "16px"
+                      }}
+                    >
+                      <h4 style={{ margin: "0 0 12px", color: "#bd3d6d" }}>
+                        🔄 Reschedule Appointment for {appointment.studentName}
+                      </h4>
+
+                      <label style={{ display: "block", fontSize: "13px", fontWeight: 700, marginBottom: "4px" }}>
+                        Select New Date:
+                      </label>
+                      <input
+                        type="date"
+                        min={getTodayString()}
+                        value={rescheduleDate}
+                        onChange={(e) => {
+                          setRescheduleDate(e.target.value);
+                          setRescheduleSlot("");
+                        }}
+                        style={{ width: "100%", padding: "10px", borderRadius: "8px", border: "1px solid #ccc", marginBottom: "12px" }}
+                      />
+
+                      <label style={{ display: "block", fontSize: "13px", fontWeight: 700, marginBottom: "4px" }}>
+                        Select Session:
+                      </label>
+                      <select
+                        value={rescheduleSession}
+                        onChange={(e) => {
+                          setRescheduleSession(e.target.value);
+                          setRescheduleSlot("");
+                        }}
+                        style={{ width: "100%", padding: "10px", borderRadius: "8px", border: "1px solid #ccc", marginBottom: "12px" }}
+                      >
+                        <option value="morning">{SESSIONS.morning.label}</option>
+                        <option value="afternoon">{SESSIONS.afternoon.label}</option>
+                      </select>
+
+                      <label style={{ display: "block", fontSize: "13px", fontWeight: 700, marginBottom: "4px" }}>
+                        Select Available Time Slot:
+                      </label>
+                      <select
+                        value={rescheduleSlot}
+                        onChange={(e) => setRescheduleSlot(e.target.value)}
+                        style={{ width: "100%", padding: "10px", borderRadius: "8px", border: "1px solid #ccc", marginBottom: "16px" }}
+                      >
+                        <option value="">-- Choose New Time Slot --</option>
+                        {SESSIONS[rescheduleSession].slots.map((slot, idx) => {
+                          const isBooked = rescheduleBookedSlots.includes(slot);
+                          return (
+                            <option key={idx} value={slot} disabled={isBooked}>
+                              {slot} {isBooked ? "(Already Booked)" : "— Available"}
+                            </option>
+                          );
+                        })}
+                      </select>
+
+                      <div style={{ display: "flex", gap: "10px" }}>
+                        <button
+                          onClick={() => handleSaveReschedule(appointment._id)}
+                          style={{
+                            background: "linear-gradient(135deg, #d84a7f, #e98998)",
+                            color: "white",
+                            border: "none",
+                            borderRadius: "10px",
+                            padding: "10px 18px",
+                            fontWeight: 700,
+                            cursor: "pointer"
+                          }}
+                        >
+                          Save New Date & Slot
+                        </button>
+                        <button
+                          onClick={() => setReschedulingId(null)}
+                          style={{
+                            background: "#e5e7eb",
+                            color: "#374151",
+                            border: "none",
+                            borderRadius: "10px",
+                            padding: "10px 18px",
+                            fontWeight: 600,
+                            cursor: "pointer"
+                          }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
                     </div>
                   )}
 
-                  {appointment.status === "Confirmed" && (
+                  {/* Accepted / Confirmed Actions */}
+                  {isAccepted && (
                     <div className="confirmed-actions">
-                      <p style={{ color: "green", fontWeight: "bold" }}>✅ Confirmed</p>
-                      <button
-                        onClick={() => setChatAppointmentId(chatAppointmentId === appointment._id ? null : appointment._id)}
-                        className="btn-chat"
-                      >
-                        💬 {chatAppointmentId === appointment._id ? "Close" : "Open"} Chat
-                      </button>
-                      <button
-                        onClick={() => cancelBooking(appointment._id)}
-                        className="btn-cancel"
-                      >
-                        Cancel Booking
-                      </button>
+                      <p style={{ color: "#16a34a", fontWeight: "bold", margin: "0 0 12px" }}>
+                        ✅ Appointment Accepted & Scheduled
+                      </p>
+
+                      <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", marginBottom: "14px" }}>
+                        <button
+                          onClick={() => setChatAppointmentId(chatAppointmentId === appointment._id ? null : appointment._id)}
+                          className="btn-chat"
+                        >
+                          💬 {chatAppointmentId === appointment._id ? "Close" : "Open"} Chat with Student
+                        </button>
+                        <button
+                          onClick={() => openRescheduleModal(appointment)}
+                          className="btn-reschedule"
+                        >
+                          🔄 Reschedule
+                        </button>
+                        <button
+                          onClick={() => cancelBooking(appointment._id)}
+                          className="btn-cancel"
+                        >
+                          Cancel Appointment
+                        </button>
+                      </div>
 
                       {chatAppointmentId === appointment._id && (
                         <div className="chat-box">
                           <div className="messages-display">
                             {!messages[appointment._id] || messages[appointment._id].length === 0 ? (
-                              <p className="no-messages">No messages yet.</p>
+                              <p className="no-messages">No messages yet with {appointment.studentName}.</p>
                             ) : (
                               messages[appointment._id].map((msg, idx) => (
                                 <div
@@ -421,10 +674,10 @@ function CounselorDashboard({ forcedCounselorId = "" }) {
                           </div>
                           <div className="message-input-box">
                             <textarea
-                              placeholder="Type your message..."
+                              placeholder="Type your message to student..."
                               value={newMessage[appointment._id] || ""}
                               onChange={(e) =>
-                                setNewMessage(prev => ({ ...prev, [appointment._id]: e.target.value }))
+                                setNewMessage((prev) => ({ ...prev, [appointment._id]: e.target.value }))
                               }
                               rows="2"
                             />
@@ -440,10 +693,10 @@ function CounselorDashboard({ forcedCounselorId = "" }) {
 
                       <div className="remarks-section">
                         <label>
-                          <b>Session Remarks</b>
+                          <b>Session Remarks (for completion):</b>
                         </label>
                         <textarea
-                          placeholder="Enter remarks for the student"
+                          placeholder="Enter summary and guidance for the student..."
                           value={remarks[appointment._id] || ""}
                           onChange={(e) =>
                             setRemarks({ ...remarks, [appointment._id]: e.target.value })
@@ -453,30 +706,68 @@ function CounselorDashboard({ forcedCounselorId = "" }) {
                           onClick={() => completeSession(appointment._id)}
                           className="btn-complete"
                         >
-                          Complete Session
+                          ✔ Complete Session
                         </button>
                       </div>
                     </div>
                   )}
 
+                  {/* Completed info */}
                   {appointment.status === "Completed" && (
                     <div className="completed-info">
-                      <p style={{ color: "green", fontWeight: "bold" }}>✅ Session Completed</p>
+                      <p style={{ color: "#16a34a", fontWeight: "bold", margin: "0 0 8px" }}>
+                        🎉 Session Completed
+                      </p>
                       <p>
-                        <b>Remarks:</b> {appointment.remarks || "No remarks provided"}
+                        <b>Teacher / Counselor Remarks:</b> {appointment.remarks || "No remarks provided"}
                       </p>
                     </div>
                   )}
 
-                  {appointment.status === "Cancelled" && (
-                    <p style={{ color: "gray", fontWeight: "bold" }}>🚫 Booking Cancelled</p>
+                  {/* Cancelled info */}
+                  {isCancelled && (
+                    <div
+                      style={{
+                        background: "#fef2f2",
+                        border: "1px solid #fecaca",
+                        borderRadius: "12px",
+                        padding: "12px 16px",
+                        marginTop: "12px",
+                        color: "#991b1b"
+                      }}
+                    >
+                      <strong style={{ display: "block", marginBottom: "4px" }}>
+                        🚫 Appointment Cancelled
+                      </strong>
+                      <p style={{ margin: 0, fontSize: "14px" }}>
+                        {appointment.cancelledBy === "student"
+                          ? `The student (${appointment.studentName}) cancelled this appointment booking request.`
+                          : "This appointment was cancelled by the counselor."}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Rejected info */}
+                  {isRejected && (
+                    <div
+                      style={{
+                        background: "#fff1f2",
+                        border: "1px solid #fecdd3",
+                        borderRadius: "12px",
+                        padding: "12px 16px",
+                        marginTop: "12px",
+                        color: "#be123c"
+                      }}
+                    >
+                      <strong>❌ Appointment Rejected</strong>
+                    </div>
                   )}
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
+              );
+            })}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
