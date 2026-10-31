@@ -21,9 +21,19 @@ async function connectDB() {
       return;
     } catch (err) {
       console.warn("⚠️ Primary MongoDB connection failed:", err.message);
+      if (process.env.VERCEL || process.env.NODE_ENV === "production") {
+        throw new Error(
+          `MongoDB Atlas connection failed: ${err.message}. Please check Atlas Database Access credentials and ensure Network Access has 0.0.0.0/0 enabled.`
+        );
+      }
       console.log("🔄 Initializing high-speed local fallback database...");
     }
   } else {
+    if (process.env.VERCEL || process.env.NODE_ENV === "production") {
+      throw new Error(
+        "MONGO_URI environment variable is not defined or is an unconfigured placeholder in production."
+      );
+    }
     console.log("ℹ️ No primary MONGO_URI configured in .env. Initializing local database...");
   }
 

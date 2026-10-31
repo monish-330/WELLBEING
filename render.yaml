@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: wellbeing-backend
+    env: node
+    rootDir: backend/backend
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 5001
+      - key: MONGO_MAX_POOL_SIZE
+        value: 100
+      - key: MONGO_MIN_POOL_SIZE
+        value: 10
+      - key: JWT_SECRET
+        value: wellbeing-super-secret-jwt-key-concurrency-2000
+      - key: JOURNAL_SECRET
+        value: wellbeing-aes-journal-secure-token-2026
+      - key: MONGO_URI
+        sync: false

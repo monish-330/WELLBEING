@@ -1,6 +1,7 @@
 const express = require("express");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const mongoose = require("mongoose");
 const User = require("../models/User");
 const { requireAuth } = require("../middleware/auth");
 
@@ -77,6 +78,12 @@ router.post("/login", async (req, res) => {
       return res.status(400).json({ message: "Username and password required" });
     }
 
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(503).json({
+        message: "Database connecting or unavailable. Verify MONGO_URI and Atlas IP Access List."
+      });
+    }
+
     const user = await User.findOne({ username }).lean();
 
     if (!user) {
@@ -100,7 +107,8 @@ router.post("/login", async (req, res) => {
       }
     });
   } catch (error) {
-    res.status(500).json({ message: "Failed to login" });
+    console.error("Login error:", error);
+    res.status(500).json({ message: error.message || "Failed to login" });
   }
 });
 
