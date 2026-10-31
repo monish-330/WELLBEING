@@ -1,4 +1,14 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "";
+const getApiBaseUrl = () => {
+  if (import.meta.env.VITE_API_BASE_URL) {
+    return import.meta.env.VITE_API_BASE_URL.replace(/\/$/, "");
+  }
+  if (typeof window !== "undefined" && window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1") {
+    return "https://wellbeing-backend-764z.onrender.com";
+  }
+  return "";
+};
+
+export const API_BASE_URL = getApiBaseUrl();
 
 function buildHeaders(extra = {}) {
   const token = localStorage.getItem("authToken");

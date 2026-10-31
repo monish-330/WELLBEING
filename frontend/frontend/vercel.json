@@ -1,6 +1,18 @@
 {
   "rewrites": [
     {
+      "source": "/api/:match*",
+      "destination": "https://wellbeing-backend-764z.onrender.com/api/:match*"
+    },
+    {
+      "source": "/uploads/:match*",
+      "destination": "https://wellbeing-backend-764z.onrender.com/uploads/:match*"
+    },
+    {
+      "source": "/images/:match*",
+      "destination": "https://wellbeing-backend-764z.onrender.com/images/:match*"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
