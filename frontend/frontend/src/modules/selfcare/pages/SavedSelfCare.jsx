@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import SelfCareCard from "../components/SelfCareCard";
 
-const API_BASE_URL = "http://localhost:5001";
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "";
 
 export default function SavedContent() {
   const [saved, setSaved] = useState([]);

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import "./CategoryGrid.css";
 
-const API_BASE_URL = "http://localhost:5001";
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "";
 
 export default function CategoryGrid({ onSelect }) {
   const [categories, setCategories] = useState([]);

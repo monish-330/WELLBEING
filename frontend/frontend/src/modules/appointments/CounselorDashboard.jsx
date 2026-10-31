@@ -3,7 +3,7 @@ import axios from "axios";
 import { useParams } from "react-router-dom";
 import "./CounselorDashboard.css";
 
-const API_BASE_URL = "http://localhost:5001";
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "";
 
 function getAuthConfig() {
   const token = localStorage.getItem("authToken");

@@ -1,6 +1,6 @@
 import { apiJson } from "../../../utils/api";
 
-const API_BASE_URL = "http://localhost:5001";
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "";
 
 export default function SelfCareCard({ item, onClick, isSavedView, isSaved = false, onSavedChange }) {
   const saveItem = async (event) => {

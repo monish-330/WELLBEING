@@ -15,9 +15,11 @@ export default function PostList() {
     localStorage.setItem("profileId", profileId);
   }
 
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "";
+
   // 📥 Fetch posts
   useEffect(() => {
-    axios.get("http://localhost:5001/api/posts")
+    axios.get(`${API_BASE_URL}/api/posts`)
       .then((res) => {
         setPosts(res.data);
       })
@@ -27,7 +29,7 @@ export default function PostList() {
   // ❤️ Like post
   const likePost = async (id) => {
     try {
-      await axios.put(`http://localhost:5001/api/posts/like/${id}`, {
+      await axios.put(`${API_BASE_URL}/api/posts/like/${id}`, {
         profileId,
       });
 

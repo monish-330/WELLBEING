@@ -41,8 +41,9 @@ export default function Comments({ post }) {
     }
 
     try {
+      const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "";
       const res = await axios.post(
-        `http://localhost:5001/api/posts/comment/${post._id}`,
+        `${API_BASE_URL}/api/posts/comment/${post._id}`,
         {
           text: cleanText,
           userId: userId

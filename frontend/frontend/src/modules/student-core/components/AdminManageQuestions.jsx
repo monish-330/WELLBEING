@@ -10,10 +10,12 @@ function AdminManageQuestions() {
   });
   const [message, setMessage] = useState("");
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "";
+
   // Fetch all questions
   const fetchQuestions = async () => {
     try {
-      const res = await fetch("http://localhost:5001/api/admin/questions");
+      const res = await fetch(`${API_BASE_URL}/api/admin/questions`);
       const data = await res.json();
       setQuestions(data.questions || []);
     } catch (err) {
@@ -36,7 +38,7 @@ function AdminManageQuestions() {
 
     try {
       setMessage("");
-      const res = await fetch("http://localhost:5001/api/admin/add-question", {
+      const res = await fetch(`${API_BASE_URL}/api/admin/add-question`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(newQuestion)
@@ -57,7 +59,7 @@ function AdminManageQuestions() {
   // Toggle question active/inactive
   const toggleQuestion = async (id, isActive) => {
     try {
-      await fetch(`http://localhost:5001/api/admin/toggle-question/${id}`, {
+      await fetch(`${API_BASE_URL}/api/admin/toggle-question/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isActive: !isActive })

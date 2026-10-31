@@ -41,7 +41,8 @@ const userId = authUser?._id || authUser?.id;
     }
 
     try {
-      await axios.post("http://localhost:5001/api/posts", {
+      const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "";
+      await axios.post(`${API_BASE_URL}/api/posts`, {
         title: cleanTitle,
         userId: userId
       });

@@ -8,7 +8,8 @@ function StartDiscussion({ refresh }) {
   const submitPost = async () => {
     if (!title || !description) return;
 
-    await axios.post("http://localhost:5001/api/posts", {
+    const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "";
+    await axios.post(`${API_BASE_URL}/api/posts`, {
       title,
       description,
       tag: "General"

@@ -3,7 +3,7 @@ import axios from "axios";
 import { useLocation, useNavigate } from "react-router-dom";
 import "./BookAppointment.css";
 
-const API_BASE_URL = "http://localhost:5001";
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "";
 
 const TIME_SLOTS = [
   "08:00 - 08:50 AM",

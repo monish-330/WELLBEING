@@ -205,17 +205,36 @@ function createApp() {
   return app;
 }
 
+const app = createApp();
+
+let dbPromise = null;
+const ensureConnected = async () => {
+  if (!dbPromise) {
+    dbPromise = (async () => {
+      await connectDB();
+      await seedDefaults().catch((err) => console.warn("Seed defaults warning:", err.message));
+    })();
+  }
+  return dbPromise;
+};
+
+app.use(async (_req, _res, next) => {
+  try {
+    await ensureConnected();
+    next();
+  } catch (err) {
+    next(err);
+  }
+});
+
 async function startServer() {
-  await connectDB();
-  await seedDefaults();
+  await ensureConnected();
 
   try {
     await mongoose.connection.collection("users").dropIndex("anonymousName_1");
   } catch (err) {
     // Index was already dropped or does not exist
   }
-
-  const app = createApp();
 
   const server = app.listen(port, () => {
     console.log(`🚀 Optimized Wellbeing Backend running at: http://localhost:${port}`);
@@ -243,7 +262,9 @@ async function startServer() {
   process.on("SIGINT", gracefulShutdown);
 }
 
-if (isClusterMode) {
+if (process.env.VERCEL) {
+  ensureConnected().catch((err) => console.error("Vercel DB connection error:", err));
+} else if (isClusterMode) {
   const numCPUs = os.cpus().length;
   console.log(`Master process ${process.pid} is running. Forking ${numCPUs} workers...`);
   for (let i = 0; i < numCPUs; i++) {
@@ -259,3 +280,6 @@ if (isClusterMode) {
     process.exit(1);
   });
 }
+
+module.exports = app;
+

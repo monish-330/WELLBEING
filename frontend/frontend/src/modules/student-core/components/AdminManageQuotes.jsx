@@ -9,10 +9,12 @@ function AdminManageQuotes() {
   });
   const [message, setMessage] = useState("");
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "";
+
   // Fetch all quotes
   const fetchQuotes = async () => {
     try {
-      const res = await fetch("http://localhost:5001/api/admin/quotes");
+      const res = await fetch(`${API_BASE_URL}/api/admin/quotes`);
       const data = await res.json();
       setQuotes(data.quotes || []);
     } catch (err) {
@@ -35,7 +37,7 @@ function AdminManageQuotes() {
 
     try {
       setMessage("");
-      const res = await fetch("http://localhost:5001/api/admin/add-quote", {
+      const res = await fetch(`${API_BASE_URL}/api/admin/add-quote`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(newQuote)
@@ -56,7 +58,7 @@ function AdminManageQuotes() {
   // Toggle quote active/inactive
   const toggleQuote = async (id, isActive) => {
     try {
-      await fetch(`http://localhost:5001/api/admin/toggle-quote/${id}`, {
+      await fetch(`${API_BASE_URL}/api/admin/toggle-quote/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isActive: !isActive })

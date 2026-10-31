@@ -4,8 +4,10 @@ import { useEffect, useState } from "react";
 function CounselorList({ setSelectedCounselor }) {
   const [counselors, setCounselors] = useState([]);
 
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "";
+
   useEffect(() => {
-    axios.get("http://localhost:5001/api/counselors")
+    axios.get(`${API_BASE_URL}/api/counselors`)
       .then(res => setCounselors(res.data))
       .catch(err => console.log(err));
   }, []);

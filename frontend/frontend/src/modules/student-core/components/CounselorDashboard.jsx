@@ -13,9 +13,11 @@ const CounselorDashboard = () => {
     try {
       setLoading(true);
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "";
+
       const url = range
-        ? `http://localhost:5001/api/counselor/dashboard?range=${range}`
-        : `http://localhost:5001/api/counselor/dashboard`;
+        ? `${API_BASE_URL}/api/counselor/dashboard?range=${range}`
+        : `${API_BASE_URL}/api/counselor/dashboard`;
 
       const res = await fetch(url);
       const result = await res.json();
@@ -41,7 +43,7 @@ const CounselorDashboard = () => {
 
     try {
       await fetch(
-        `http://localhost:5001/api/counselor/delete/${studentId}/${day}/${date}`,
+        `${API_BASE_URL}/api/counselor/delete/${studentId}/${day}/${date}`,
         { method: "DELETE" }
       );
 
