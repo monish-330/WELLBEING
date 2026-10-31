@@ -827,3 +827,109 @@ textarea:focus {
     max-width: 100%;
   }
 }
+
+/* Enhanced mobile responsiveness preserving exact styling */
+@media (max-width: 768px) {
+  html, body {
+    overflow-x: hidden;
+    width: 100%;
+  }
+
+  .login-shell {
+    display: flex;
+    flex-direction: column;
+    padding: 16px 12px;
+    gap: 16px;
+    min-height: 100vh;
+    justify-content: center;
+  }
+
+  .login-hero {
+    padding: 24px 18px;
+    border-radius: 20px;
+    width: 100%;
+  }
+
+  .login-hero h1 {
+    font-size: 26px;
+    line-height: 1.25;
+  }
+
+  .login-hero p {
+    font-size: 14px;
+  }
+
+  .login-card--premium,
+  .login-card {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    padding: 24px 16px;
+    border-radius: 20px;
+    margin: 0 auto;
+  }
+
+  .login-points {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .shell {
+    grid-template-columns: 1fr;
+    padding: 12px;
+    gap: 16px;
+  }
+
+  .two-col {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .panel,
+  .hero-card,
+  .entry-card {
+    padding: 18px 14px;
+    border-radius: 20px;
+  }
+
+  input,
+  select,
+  textarea {
+    font-size: 16px; /* Prevents auto-zoom on iOS Safari */
+    padding: 12px 14px;
+  }
+
+  button {
+    padding: 12px 20px;
+    width: 100%;
+  }
+
+  .tag-row {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+}
+
+@media (max-width: 480px) {
+  .login-shell {
+    padding: 12px 8px;
+  }
+
+  .login-hero {
+    padding: 20px 14px;
+  }
+
+  .login-card--premium {
+    padding: 20px 14px;
+  }
+
+  .login-hero h1 {
+    font-size: 22px;
+  }
+
+  .login-submit {
+    padding: 12px 16px;
+    font-size: 15px;
+  }
+}
+
